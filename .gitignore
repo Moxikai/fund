@@ -4,4 +4,4 @@
 *.db
 *.pyc
 migrations/
-
+*.json
