@@ -1,0 +1,7 @@
+.scrapy/
+.DS_Store
+.idea/
+*.db
+*.pyc
+migrations/
+
