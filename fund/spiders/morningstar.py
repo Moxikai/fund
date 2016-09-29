@@ -9,7 +9,9 @@ import copy
 
 import scrapy
 from scrapy import FormRequest,Request
-from scrapy_splash import SplashRequest
+from scrapy.utils.response import get_base_url
+from scrapy.utils.url import urljoin_rfc
+from bs4 import BeautifulSoup
 
 class MorningstarSpider(scrapy.Spider):
     name = "morningstar"
@@ -19,83 +21,96 @@ class MorningstarSpider(scrapy.Spider):
     )
     ajax_url = 'http://cn.morningstar.com/handler/quicktake.ashx'
     query_basic = urlparse.urlparse(ajax_url)
+    page = 1
+    pageCount = 2
 
     def parse(self, response):
         """解析基金明细数据"""
+
         tr_list = response.xpath('//tr[contains(@class,"Item")]')
         fund = {}
+        """
         for tr in tr_list:
-            fund['code'] = tr.xpath('td[@class="msDataText"][1]/a/text()').extract_first(),
-            fund['link'] = tr.xpath('td[@class="msDataText"][2]/a/@href').extract_first(),
-            fund['name'] = tr.xpath('td[@class="msDataText"][2]/a/text()').extract_first()
-
-            """转到详细页面"""
-            url = urlparse.urljoin(self.start_urls[0],fund['link'])
+            fund['code'] = tr.xpath('td[@class="msDataText"][1]/a/text()').extract(),
+            link = tr.xpath('td[@class="msDataText"][2]/a/@href').extract(),
+            fund['name'] = tr.xpath('td[@class="msDataText"][2]/a/text()').extract(),
+            print link,type(link)
+            url = urlparse.urljoin(get_base_url(response),link)
+            print url,
             yield Request(url=url,
                           meta={'fund':fund},
                           callback=self.parseBasic)
+        """
+        soup = BeautifulSoup(response.body,'html.parser')
+        tr_list = soup.find_all('tr',class_= "gridItem" or "gridAlternateItem")
+        for tr in tr_list:
+            fund['code'] = tr.find('td',class_="msDataText").a.get_text()
+            fund['link'] = tr.find_all('td',class_="msDataText")[1].a.get('href')
+            fund['name'] = tr.find_all('td',class_="msDataText")[1].a.get_text()
+            #print fund['code'],fund['link'],fund['name']
+            url = urlparse.urljoin(self.start_urls[0],fund['link']) #相对路径转换到绝对路径
+            yield Request(url=url,meta={'fund':fund},callback=self.parseBasic)
+
 
         """转到列表下一页"""
         """获取总页码"""
-        javascript = response.xpath('//a[contains(text(),">>")]/@href').extract()
-        pattern = re.compile("'(\d{1,})'")
-        total = pattern.findall(javascript[-1])
-        if total:
-            formdata = {}
-            for page in range(2,int(total[0])+1):
-                """获取下一页post数据"""
-                formdata['__EVENTTARGET'] = 'ctl00$cphMain$AspNetPager1'
-                formdata['__EVENTARGUMENT'] = str(page)
-                formdata['__VIEWSTATE'] = response.xpath('//input[@type="hidden" and @name="__VIEWSTATE"]/@value').extract_first()
-                formdata['__EVENTVALIDATION'] = response.xpath('//input[@type="hidden" and @name="__EVENTVALIDATION"]/@value').extract_first()
-                formdata['__LASTFOCUS'] = ''
-                formdata['ctl00$cphMain$ddlCompany'] = ''
-                formdata['ctl00$cphMain$ddlPortfolio'] = ''
-                formdata['ctl00$cphMain$ddlWatchList'] = ''
-                formdata['ctl00$cphMain$txtFund'] = u'基金名称'
-                formdata['ctl00$cphMain$ddlPageSite'] = '25'
-
-                yield FormRequest(url=self.start_urls[0], formdata=formdata, callback=self.parse)
-
+        formdata ={}
+        if self.page == 1:
+            """只计算一次最大页数"""
+            javascript = soup.find('div',attrs={'id':'ctl00_cphMain_AspNetPager1'}).find_all('a')[-1].get('href')
+            pattern = re.compile("'(\d{1,})'")
+            self.pageCount = pattern.findall(javascript)[0]
+            self.page += 1
+        elif self.page > 1 and self.page < self.pageCount:
+            #页码增加1
+            self.page += 1
+        if self.page <= self.pageCount:
+            """获取下一页post数据"""
+            formdata['__EVENTTARGET'] = 'ctl00$cphMain$AspNetPager1'
+            formdata['__EVENTARGUMENT'] = str(self.page)
+            formdata['__VIEWSTATE'] = soup.find('input',attrs={'type':"hidden",'name':"__VIEWSTATE"}).get('value')
+            formdata['__EVENTVALIDATION'] = soup.find('input',attrs={'type':'hidden','name':'__EVENTVALIDATION'}).get('value')
+            formdata['__LASTFOCUS'] = ''
+            formdata['ctl00$cphMain$ddlCompany'] = ''
+            formdata['ctl00$cphMain$ddlPortfolio'] = ''
+            formdata['ctl00$cphMain$ddlWatchList'] = ''
+            formdata['ctl00$cphMain$txtFund'] = u'基金名称'
+            formdata['ctl00$cphMain$ddlPageSite'] = '25'
+            print '当前页码为---------%s------------'%(self.page)
+            yield FormRequest(url=self.start_urls[0], formdata=formdata, callback=self.parse)
         else:
-            print '获取最大页码失败'
+            print '已经达到最大页码'
 
-    def parseDetail(self,response):
+
+
+    def parseBasic(self,response):
         """解析详细数据"""
-        div = response.xpath('//div[@id="qt_base"]')
-        unitNet = div.xpath('/ul[@class="nav"]/li[@class="n"]/span/text()').extract_first() #净值
-        unitNetDate = div.xpath('/ul[@class="nav"]/li[@class="date"]/text()').extract_first() #净值日期
-        li = div.xpath('/ul[@class="change"]/li[@class="n"]')
-        dailyVaritionOfNet_c = li.xpath('/span[@class="c"]/text()').extract_first() #净值变动值
-        dailyVaritionOfNet_p = li.xpath('/span[@class="p"]/text()').extract_first() #净值变动率
-        #补充基本信息
-        info = response.xpath('//div[@id="qt_base"]/ul[@class="info"]')
-        type = info.xpath('/li[@class="l"]/span[@class="category"]/text()').extract_first()
-        #成立日期
-        inceptionDate = info.xpath('/li[@class="m"]/span[@class="inception"]/text()').extract_first()
-        #开发日期
-        startDate = info.xpath('/li[@class="m"]/span[@class="start"]/text()').extract_first()
-        #上市日期
-        tradingDate = info.xpath('/li/span[@class="tradingdate"]/text()').extract_first()
-        #申购状态
-        subscribe = info.xpath('/li/span[@class="subscribe"]/text()').extract_first()
-        #赎回状态
-        redeem = info.xpath('/li/span[@class="redeem"]/text()').extract_first()
-        #总资产
-        asset = info.xpath('/li/span[@class="asset"]/text()').extract_first()
-        #最低投资额
-        min = info.xpath('/li/span[@class="min"]/text()').extract_first()
-        #上市交易所
-        stockExchange = info.xpath('/li/span[@class="front"][1]/text()').extract_first()
-        #前端收费
-        frontFee = info.xpath('/li/span[@class="front"][2]/text()').extract_first()
-        #后端收费
-        deferFee = info.xpath('/li/span[@class="defer"]/text()').extract_first()
+        soup = BeautifulSoup(response.body,'html.parser')
+        div = soup.find('div',attrs={'id':"qt_base"})
+        ul = div.find('ul',class_="nav") #中间节点
 
-        fcid = response.xpath('//input[@id="qt_fcid"]/@value').extract_first()
+        unitNet = ul.find('li',class_="n").span.get_text() #净值
+        unitNetDate = ul.find('li',class_="date").get_text() #净值日期
 
-        """获取传递的值"""
-        fund = response.meta
+        li = div.find('ul',class_="change").find('li',class_="n") #中间节点
+        dailyVaritionOfNet_c = li.find('span',class_="c").get_text()
+        dailyVaritionOfNet_p = li.find('span',class_="p").get_text()
+
+        li_list = div.find('ul',class_="info").find_all('li')#中间节点
+        type = li_list[0].find('span').get_text() #类型
+        inceptionDate = li_list[1].find('span').get_text() #成立日期
+        startDate = li_list[2].find('span').get_text() #开发日期
+        tradingDate = li_list[3].find('span').get_text() # 上市日期
+        subscribe = li_list[4].find('span').get_text() # 申购状态
+        redeem = li_list[5].find('span').get_text() #赎回状态
+        asset = li_list[7].find('span').get_text() #总资产
+        minunit = li_list[8].find('span').get_text() #最小投资额
+        stockExchange = li_list[9].find('span').get_text() # 交易所
+        frontFee = li_list[10].find('span').get_text() # 前端收费
+        deferFee = li_list[11].find('span').get_text() # 后端收费
+        fcid = soup.find('input',attrs={'id':'qt_fcid'}).get('value') #fcid
+
+        fund = response.meta['fund'] # 获取粘性参数
         fund['type'] = type
         fund['unitNetDate'] = unitNetDate
         fund['unitNet'] = unitNet
@@ -107,22 +122,25 @@ class MorningstarSpider(scrapy.Spider):
         fund['subscribe'] = subscribe
         fund['redeem'] = redeem
         fund['asset'] = asset
-        fund['min'] = min
+        fund['min'] = minunit
         fund['stockExchange'] = stockExchange
         fund['frontFee'] = frontFee
         fund['deferFee'] = deferFee
         fund['fcid'] = fcid
 
-
+        yield fund
         """业绩回报"""
         #设置查询参数
-        query = 'command=%s&fcid=%s&randomid=%s'%('return',fcid,random.random())
-        query0 = copy.deepcopy(self.query_basic)
-        query0.query = query
-        url = urlparse.urlunparse(query0)
+        #query = 'command=%s&fcid=%s&randomid=%s'%('return',fcid,random.random())
+        #query0 = copy.deepcopy(self.query_basic)
+        #print query0,type(query0)
+        #query0.query = query
+        #url = urlparse.urlunparse(query0)
+        """
         yield Request(url=url,
                       meta={'fund':fund},
                       callback=self.parseFee,)
+                      """
 
     def parseReturn(self,response):
         """获取回报数据，请求json"""
