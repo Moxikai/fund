@@ -60,7 +60,9 @@ class MorningstarSpider(scrapy.Spider):
             javascript = soup.find('div',attrs={'id':'ctl00_cphMain_AspNetPager1'}).find_all('a')[-1].get('href')
             pattern = re.compile("'(\d{1,})'")
             self.pageCount = pattern.findall(javascript)[0]
+            print '总页码是----------------%s----------------'%(self.pageCount)
             self.page += 1
+
         elif self.page > 1 and self.page < self.pageCount:
             #页码增加1
             self.page += 1
@@ -128,19 +130,19 @@ class MorningstarSpider(scrapy.Spider):
         fund['deferFee'] = deferFee
         fund['fcid'] = fcid
 
-        yield fund
+        #yield fund
         """业绩回报"""
         #设置查询参数
-        #query = 'command=%s&fcid=%s&randomid=%s'%('return',fcid,random.random())
-        #query0 = copy.deepcopy(self.query_basic)
-        #print query0,type(query0)
-        #query0.query = query
-        #url = urlparse.urlunparse(query0)
-        """
+        query = 'command=%s&fcid=%s&randomid=%s'%('return',fcid,random.random())
+        url = urlparse.urlunparse(('http',
+                                   'cn.morningstar.com',
+                                   '/handler/quicktake.ashx',
+                                   '',
+                                   query,
+                                   ''))
         yield Request(url=url,
                       meta={'fund':fund},
                       callback=self.parseFee,)
-                      """
 
     def parseReturn(self,response):
         """获取回报数据，请求json"""
@@ -148,12 +150,12 @@ class MorningstarSpider(scrapy.Spider):
         fund['current'] = response.body
         """转到费用"""
         query = 'command=%s&fcid=%s&randomid=%s' % ('fee', fund['fcid'], random.random())
-        query0 = copy.deepcopy(self.query_basic)
-        query0.query = query
-        url = urlparse.urlunparse(query0)
-        yield Request(url=url,
-                      meta={'fund':fund},
-                      callback=self.parseFee)
+        url = urlparse.urlunparse(('http',
+                                   'cn.morningstar.com',
+                                   '/handler/quicktake.ashx',
+                                   '',
+                                   query,
+                                   ''))
 
 
     def parseFee(self,response):
@@ -162,9 +164,12 @@ class MorningstarSpider(scrapy.Spider):
         fund['fee'] = response.body
         """转到费用"""
         query = 'command=%s&fcid=%s&randomid=%s' % ('agency', fund['fcid'], random.random())
-        query0 = copy.deepcopy(self.query_basic)
-        query0.query = query
-        url = urlparse.urlunparse(query0)
+        url = urlparse.urlunparse(('http',
+                                   'cn.morningstar.com',
+                                   '/handler/quicktake.ashx',
+                                   '',
+                                   query,
+                                   ''))
         yield Request(url=url,
                       meta={'fund': fund},
                       callback=self.parseAgency)
@@ -175,9 +180,12 @@ class MorningstarSpider(scrapy.Spider):
         fund['agency'] = response.body
         """转到费用"""
         query = 'command=%s&fcid=%s&randomid=%s' % ('portfolio', fund['fcid'], random.random())
-        query0 = copy.deepcopy(self.query_basic)
-        query0.query = query
-        url = urlparse.urlunparse(query0)
+        url = urlparse.urlunparse(('http',
+                                   'cn.morningstar.com',
+                                   '/handler/quicktake.ashx',
+                                   '',
+                                   query,
+                                   ''))
         yield Request(url=url,
                       meta={'fund': fund},
                       callback=self.parsePortfolio)
@@ -188,9 +196,12 @@ class MorningstarSpider(scrapy.Spider):
         fund['portfolio'] = response.body
         """转到费用"""
         query = 'command=%s&fcid=%s&randomid=%s' % ('manage', fund['fcid'], random.random())
-        query0 = copy.deepcopy(self.query_basic)
-        query0.query = query
-        url = urlparse.urlunparse(query0)
+        url = urlparse.urlunparse(('http',
+                                   'cn.morningstar.com',
+                                   '/handler/quicktake.ashx',
+                                   '',
+                                   query,
+                                   ''))
         yield Request(url=url,
                       meta={'fund': fund},
                       callback=self.parseManage)
@@ -201,9 +212,12 @@ class MorningstarSpider(scrapy.Spider):
         fund['manage'] = response.body
         """转到费用"""
         query = 'command=%s&fcid=%s&randomid=%s' % ('dividend', fund['fcid'], random.random())
-        query0 = copy.deepcopy(self.query_basic)
-        query0.query = query
-        url = urlparse.urlunparse(query0)
+        url = urlparse.urlunparse(('http',
+                                   'cn.morningstar.com',
+                                   '/handler/quicktake.ashx',
+                                   '',
+                                   query,
+                                   ''))
         yield Request(url=url,
                       meta={'fund': fund},
                       callback=self.parseDividend)
@@ -214,9 +228,12 @@ class MorningstarSpider(scrapy.Spider):
         fund['dividend'] = response.body
         """转到费用"""
         query = 'command=%s&fcid=%s&randomid=%s' % ('performance', fund['fcid'], random.random())
-        query0 = copy.deepcopy(self.query_basic)
-        query0.query = query
-        url = urlparse.urlunparse(query0)
+        url = urlparse.urlunparse(('http',
+                                   'cn.morningstar.com',
+                                   '/handler/quicktake.ashx',
+                                   '',
+                                   query,
+                                   ''))
         yield Request(url=url,
                       meta={'fund': fund},
                       callback=self.parsePerformance)
@@ -227,9 +244,12 @@ class MorningstarSpider(scrapy.Spider):
         fund['performance'] = response.body
         """转到费用"""
         query = 'command=%s&fcid=%s&randomid=%s' % ('rating', fund['fcid'], random.random())
-        query0 = copy.deepcopy(self.query_basic)
-        query0.query = query
-        url = urlparse.urlunparse(query0)
+        url = urlparse.urlunparse(('http',
+                                   'cn.morningstar.com',
+                                   '/handler/quicktake.ashx',
+                                   '',
+                                   query,
+                                   ''))
         yield Request(url=url,
                       meta={'fund': fund},
                       callback=self.parseRating)
